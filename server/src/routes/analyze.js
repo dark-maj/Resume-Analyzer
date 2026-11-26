@@ -17,7 +17,10 @@ router.post(
     const { resumeText, jobText } = input.data;
     try {
       return res.json(await runAnalysis(resumeText, jobText));
-    } catch {
+    } catch (error) {
+      // The analysis function only includes provider status or schema field names,
+      // never model output or submitted resume/job text.
+      console.error(`[analysis] ${error.message}`);
       return res.status(502).json({
         message: "The analysis service returned an invalid response. Please try again.",
       });
