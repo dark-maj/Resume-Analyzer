@@ -5,6 +5,7 @@ import { rateLimit } from "express-rate-limit";
 import multer from "multer";
 import { PDFParse } from "pdf-parse";
 import { z } from "zod";
+import analyzeRouter from "./routes/analyze.js";
 
 dotenv.config();
 
@@ -23,6 +24,7 @@ const upload = multer({
 
 app.use(cors({ origin: env.ALLOWED_ORIGIN }));
 app.use(express.json({ limit: "1mb" }));
+app.use("/api/analyze", analyzeRouter);
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true });

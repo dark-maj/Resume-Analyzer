@@ -90,6 +90,75 @@ body {
   color: #9ca3af;
 }
 
+.status-message {
+  margin: 8px 0 0;
+  font-size: 0.82rem;
+  color: #cbd5e1;
+}
+
+.status-success {
+  color: #86efac;
+}
+
+.status-error {
+  color: #fca5a5;
+  margin-bottom: 8px;
+}
+
+.analysis-list,
+.missing-list {
+  list-style: none;
+  padding: 0;
+}
+
+.match-item,
+.missing-item {
+  margin: 8px 0;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #1f2937;
+  background: #050b1c;
+}
+
+.evidence-quote {
+  margin: 6px 0 0;
+  padding-left: 10px;
+  border-left: 2px solid #3b82f6;
+  color: #9ca3af;
+  font-size: 0.82rem;
+}
+
+.missing-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.importance-pill,
+.coming-soon {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: #111827;
+  color: #cbd5e1;
+  font-size: 0.68rem;
+  font-weight: 500;
+  vertical-align: middle;
+}
+
+.importance-high {
+  color: #fca5a5;
+}
+
+.importance-medium {
+  color: #fcd34d;
+}
+
+.importance-low {
+  color: #86efac;
+}
+
 .textarea {
   width: 100%;
   min-height: 220px;

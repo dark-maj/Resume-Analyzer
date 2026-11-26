@@ -1,7 +1,13 @@
 import React, { useState } from "react";
-import axios from "axios";
+import { analyze, extractPdf } from "./api.js";
 
-const API_BASE = " https://hirepilot-orchestrator-105590933896.us-central1.run.app "; // TODO: change when backend is ready
+const getErrorMessage = (error, fallback) => {
+  if (error.response?.data?.message) return error.response.data.message;
+  if (error.code === "ERR_NETWORK") {
+    return "Could not reach the API. Check that the backend is running and VITE_API_URL is correct.";
+  }
+  return error.message || fallback;
+};
 
 const App = () => {
   const [resumeText, setResumeText] = useState("");
@@ -11,11 +17,16 @@ const App = () => {
   const [atsResume, setAtsResume] = useState("");
   const [creativeResume, setCreativeResume] = useState("");
   const [coverLetter, setCoverLetter] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [extractStatus, setExtractStatus] = useState("idle");
+  const [extractError, setExtractError] = useState("");
+  const [analysisStatus, setAnalysisStatus] = useState("idle");
+  const [analysisError, setAnalysisError] = useState("");
+  const [mockLoading, setMockLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("analysis");
   const [versions, setVersions] = useState([]);
   const [resumeFile, setResumeFile] = useState(null);
   const [resumeSource, setResumeSource] = useState("text"); // "text" or "pdf"
+  const [fileInputKey, setFileInputKey] = useState(0);
 
   // Helper: fake delay for mock responses (while backend isn’t ready)
   const fakeDelay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -28,85 +39,60 @@ const App = () => {
     return true;
   };
 
-  // 🔹 Extract text from uploaded PDF (stubbed for now)
   const handleExtractFromPdf = async () => {
     if (!resumeFile) {
-      alert("Please select a PDF first.");
+      setExtractStatus("error");
+      setExtractError("Select a PDF before extracting text.");
       return;
     }
 
-    setLoading(true);
-    setResumeSource("pdf");
+    setExtractStatus("loading");
+    setExtractError("");
 
     try {
-      // When backend is ready, uncomment this and remove fakeDelay block
-
-      // const formData = new FormData();
-      // formData.append("file", resumeFile);
-      // const res = await axios.post(
-      //   `${API_BASE}/agent/parse-resume-pdf`,
-      //   formData,
-      //   { headers: { "Content-Type": "multipart/form-data" } }
-      // );
-      // setResumeText(res.data.text || "");
-
-      await fakeDelay(800);
-      setResumeText(
-        (prev) =>
-          prev ||
-          "// TODO: connect backend: this is where parsed PDF resume text will appear."
+      const result = await extractPdf(resumeFile);
+      setResumeText(result.text || "");
+      setResumeSource("pdf");
+      setAnalysis(null);
+      setAnalysisStatus("idle");
+      setAnalysisError("");
+      setExtractStatus("done");
+    } catch (error) {
+      setExtractError(
+        getErrorMessage(error, "Could not extract text from the PDF. Try again."),
       );
-    } catch (err) {
-      console.error(err);
-      alert("Could not extract text from PDF. Check backend connection.");
-    } finally {
-      setLoading(false);
+      setExtractStatus("error");
     }
   };
 
   const handleAnalyzeFit = async () => {
-    if (!ensureInputs()) return;
-    setLoading(true);
+    if (!resumeText.trim() || !jobDescription.trim()) {
+      setAnalysis(null);
+      setAnalysisStatus("error");
+      setAnalysisError("Add both resume text and a job description before analyzing.");
+      return;
+    }
+
+    setAnalysisStatus("loading");
+    setAnalysisError("");
     setActiveTab("analysis");
 
     try {
-      // TODO: When backend is ready, call Cloud Run endpoint here:
-      // const res = await axios.post(`${API_BASE}/agent/analyze-fit`, {
-      //   resumeText,
-      //   jobDescription,
-      //   jobUrl,
-      // });
-      // setAnalysis(res.data);
-
-      // Mocked response for now:
-      await fakeDelay(1000);
-      setAnalysis({
-        overlapScore: 78,
-        strengths: [
-          "Strong alignment with backend / cloud skills",
-          "Good experience with React and frontend tooling",
-        ],
-        gaps: [
-          "Explicit mention of Kubernetes / container orchestration",
-          "More quantified impact on previous projects",
-        ],
-        recommendedSkills: [
-          "Kubernetes",
-          "CI/CD pipelines",
-          "System design basics",
-        ],
-      });
-    } catch (err) {
-      console.error(err);
-      alert("Something went wrong during analysis.");
-    } finally {
-      setLoading(false);
+      const result = await analyze(resumeText, jobDescription);
+      setAnalysis(result);
+      setAnalysisStatus("done");
+    } catch (error) {
+      setAnalysis(null);
+      setAnalysisError(
+        getErrorMessage(error, "Analysis failed. Check the server and retry."),
+      );
+      setAnalysisStatus("error");
     }
   };
 
   const handleGenerateResumes = async () => {
     if (!ensureInputs()) return;
-    setLoading(true);
+    setMockLoading(true);
     setActiveTab("ats");
 
     try {
@@ -162,13 +148,13 @@ React • JavaScript • GCP • APIs • Automation • AI`;
       console.error(err);
       alert("Error generating resumes.");
     } finally {
-      setLoading(false);
+      setMockLoading(false);
     }
   };
 
   const handleGenerateCoverLetter = async () => {
     if (!ensureInputs()) return;
-    setLoading(true);
+    setMockLoading(true);
     setActiveTab("cover");
 
     try {
@@ -201,7 +187,7 @@ Sincerely,
       console.error(err);
       alert("Error generating cover letter.");
     } finally {
-      setLoading(false);
+      setMockLoading(false);
     }
   };
 
@@ -225,6 +211,12 @@ Sincerely,
             setVersions([]);
             setResumeFile(null);
             setResumeSource("text");
+            setExtractStatus("idle");
+            setExtractError("");
+            setAnalysisStatus("idle");
+            setAnalysisError("");
+            setMockLoading(false);
+            setFileInputKey((key) => key + 1);
           }}
         >
           Reset Session
@@ -243,12 +235,21 @@ Sincerely,
           {/* PDF upload */}
           <div style={{ marginBottom: "8px" }}>
             <input
+              key={fileInputKey}
               type="file"
               accept="application/pdf"
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 setResumeFile(file || null);
-                if (file) setResumeSource("pdf");
+                if (file) {
+                  setResumeSource("pdf");
+                  setResumeText("");
+                  setAnalysis(null);
+                  setAnalysisStatus("idle");
+                  setAnalysisError("");
+                  setExtractStatus("idle");
+                  setExtractError("");
+                }
               }}
             />
             {resumeFile && (
@@ -261,12 +262,25 @@ Sincerely,
               className="secondary-btn"
               style={{ marginTop: "4px" }}
               onClick={handleExtractFromPdf}
-              disabled={!resumeFile || loading}
+              disabled={!resumeFile || extractStatus === "loading"}
             >
-              {loading && resumeSource === "pdf"
+              {extractStatus === "loading"
                 ? "Extracting from PDF..."
-                : "Extract from PDF"}
+                : extractStatus === "error"
+                  ? "Retry extraction"
+                  : "Extract from PDF"}
             </button>
+            {extractStatus === "loading" && (
+              <p className="status-message" role="status">Extracting PDF text…</p>
+            )}
+            {extractStatus === "done" && (
+              <p className="status-message status-success" role="status">
+                Text extracted. Review or edit it below before analysis.
+              </p>
+            )}
+            {extractStatus === "error" && (
+              <p className="status-message status-error" role="alert">{extractError}</p>
+            )}
           </div>
 
           {/* Resume text area */}
@@ -276,9 +290,15 @@ Sincerely,
             value={resumeText}
             onChange={(e) => {
               setResumeText(e.target.value);
-              if (e.target.value) setResumeSource("text");
+              setResumeSource("text");
+              setAnalysis(null);
+              setAnalysisStatus("idle");
+              setAnalysisError("");
             }}
           />
+          {resumeSource === "pdf" && extractStatus === "done" && (
+            <p className="hint">Extracted resume text is editable. Changes will be used for analysis.</p>
+          )}
         </section>
 
         {/* Middle column – Job Info */}
@@ -291,38 +311,44 @@ Sincerely,
             value={jobUrl}
             onChange={(e) => setJobUrl(e.target.value)}
           />
+          <p className="hint">Job link fetching is coming soon. Paste the job description below to analyze it.</p>
           <textarea
             className="textarea"
             placeholder="Paste job description here..."
             value={jobDescription}
-            onChange={(e) => setJobDescription(e.target.value)}
+            onChange={(e) => {
+              setJobDescription(e.target.value);
+              setAnalysis(null);
+              setAnalysisStatus("idle");
+              setAnalysisError("");
+            }}
           />
 
           <div className="btn-row">
             <button
               className="secondary-btn"
               onClick={handleAnalyzeFit}
-              disabled={loading}
+              disabled={analysisStatus === "loading"}
             >
-              {loading && activeTab === "analysis"
+              {analysisStatus === "loading"
                 ? "Analyzing..."
                 : "Analyze Fit"}
             </button>
             <button
               className="primary-btn"
               onClick={handleGenerateResumes}
-              disabled={loading}
+              disabled={mockLoading}
             >
-              {loading && activeTab === "ats"
+              {mockLoading && activeTab === "ats"
                 ? "Generating Resumes..."
                 : "Generate Resumes"}
             </button>
             <button
               className="secondary-btn"
               onClick={handleGenerateCoverLetter}
-              disabled={loading}
+              disabled={mockLoading}
             >
-              {loading && activeTab === "cover"
+              {mockLoading && activeTab === "cover"
                 ? "Writing Cover Letter..."
                 : "Generate Cover Letter"}
             </button>
@@ -346,7 +372,7 @@ Sincerely,
               }`}
               onClick={() => setActiveTab("ats")}
             >
-              Resumes
+              Resumes (coming soon)
             </button>
             <button
               className={`tab-btn ${
@@ -354,7 +380,7 @@ Sincerely,
               }`}
               onClick={() => setActiveTab("cover")}
             >
-              Cover Letter
+              Cover Letter (coming soon)
             </button>
             <button
               className={`tab-btn ${
@@ -362,7 +388,7 @@ Sincerely,
               }`}
               onClick={() => setActiveTab("history")}
             >
-              History
+              History (coming soon)
             </button>
           </div>
 
@@ -370,37 +396,55 @@ Sincerely,
             {activeTab === "analysis" && (
               <div>
                 <h3>Job–Resume Match Analysis</h3>
-                {!analysis && (
+                {analysisStatus === "idle" && (
                   <p className="hint">
-                    Click <b>Analyze Fit</b> to see overlap, gaps, and suggested
-                    skills.
+                    Click <b>Analyze Fit</b> to compare your resume with the job description.
                   </p>
                 )}
-                {analysis && (
+                {analysisStatus === "loading" && (
+                  <p className="status-message" role="status">Analyzing resume and job description…</p>
+                )}
+                {analysisStatus === "error" && (
+                  <div>
+                    <p className="status-message status-error" role="alert">{analysisError}</p>
+                    <button className="secondary-btn" onClick={handleAnalyzeFit}>Retry analysis</button>
+                  </div>
+                )}
+                {analysisStatus === "done" && analysis && (
                   <>
                     <p className="score">
-                      Match Score: <span>{analysis.overlapScore}%</span>
+                      Match Score: <span>{analysis.score}%</span>
                     </p>
-                    <h4>Strengths</h4>
-                    <ul>
-                      {analysis.strengths.map((s, i) => (
-                        <li key={i}>{s}</li>
-                      ))}
-                    </ul>
-                    <h4>Gaps / Missing Areas</h4>
-                    <ul>
-                      {analysis.gaps.map((g, i) => (
-                        <li key={i}>{g}</li>
-                      ))}
-                    </ul>
-                    <h4>Recommended Skills to Add</h4>
-                    <div className="chips">
-                      {analysis.recommendedSkills.map((sk, i) => (
-                        <span key={i} className="chip">
-                          {sk}
-                        </span>
-                      ))}
-                    </div>
+                    <h4>Matched Skills</h4>
+                    {analysis.matched.length ? (
+                      <ul className="analysis-list">
+                        {analysis.matched.map(({ skill, evidence }, i) => (
+                          <li className="match-item" key={`${skill}-${i}`}>
+                            <strong>{skill}</strong>
+                            <blockquote className="evidence-quote">“{evidence}”</blockquote>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : <p className="hint">No matching skills were identified.</p>}
+
+                    <h4>Missing Skills</h4>
+                    {analysis.missing.length ? (
+                      <ul className="missing-list">
+                        {analysis.missing.map(({ skill, importance }, i) => (
+                          <li className="missing-item" key={`${skill}-${i}`}>
+                            <span>{skill}</span>
+                            <span className={`importance-pill importance-${importance}`}>{importance} importance</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : <p className="hint">No missing skills identified.</p>}
+
+                    <h4>Suggested Skills</h4>
+                    {analysis.suggested.length ? (
+                      <div className="chips">
+                        {analysis.suggested.map((skill, i) => <span key={`${skill}-${i}`} className="chip">{skill}</span>)}
+                      </div>
+                    ) : <p className="hint">No additional skills suggested.</p>}
                   </>
                 )}
               </div>
@@ -409,7 +453,8 @@ Sincerely,
             {activeTab === "ats" && (
               <div className="split">
                 <div className="split-column">
-                  <h3>ATS Resume</h3>
+                  <h3>ATS Resume <span className="coming-soon">Coming soon</span></h3>
+                  <p className="hint">Mock preview. Connected resume generation is coming soon.</p>
                   {!atsResume && (
                     <p className="hint">
                       Click <b>Generate Resumes</b> to create an ATS-optimized
@@ -419,7 +464,7 @@ Sincerely,
                   <pre className="code-block">{atsResume}</pre>
                 </div>
                 <div className="split-column">
-                  <h3>Creative / Recruiter Resume</h3>
+                  <h3>Creative / Recruiter Resume <span className="coming-soon">Coming soon</span></h3>
                   <pre className="code-block">{creativeResume}</pre>
                 </div>
               </div>
@@ -427,7 +472,8 @@ Sincerely,
 
             {activeTab === "cover" && (
               <div>
-                <h3>Cover Letter</h3>
+                <h3>Cover Letter <span className="coming-soon">Coming soon</span></h3>
+                <p className="hint">Mock preview. Connected cover letter generation is coming soon.</p>
                 {!coverLetter && (
                   <p className="hint">
                     Click <b>Generate Cover Letter</b> after adding resume +
@@ -440,7 +486,7 @@ Sincerely,
 
             {activeTab === "history" && (
               <div>
-                <h3>Generated Versions History</h3>
+                <h3>Generated Versions History <span className="coming-soon">Coming soon</span></h3>
                 {versions.length === 0 ? (
                   <p className="hint">
                     Once you generate resumes, they’ll show up here with
