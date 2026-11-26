@@ -1,9 +1,7 @@
-import { GoogleGenAI } from "@google/genai";
 import { Router } from "express";
 import { rateLimit } from "express-rate-limit";
-import { keepSupportedMatches } from "../analysis/evidence.js";
-import { buildAnalysisPrompt } from "../analysis/prompt.js";
-import { analysisInputSchema, analysisResultSchema } from "../analysis/schema.js";
+import { runAnalysis } from "../analysis/runAnalysis.js";
+import { analysisInputSchema } from "../analysis/schema.js";
 
 const router = Router();
 
@@ -17,28 +15,13 @@ router.post(
     }
 
     const { resumeText, jobText } = input.data;
-    const prompt = buildAnalysisPrompt(resumeText, jobText);
-
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      try {
-        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-        const response = await ai.models.generateContent({
-          model: "gemini-3.8-flash",
-          contents: prompt,
-          config: { responseMimeType: "application/json" },
-        });
-        const parsedJson = JSON.parse(response.text);
-        const validated = analysisResultSchema.safeParse(parsedJson);
-
-        if (validated.success) {
-          return res.json(keepSupportedMatches(validated.data, resumeText));
-        }
-      } catch {
-        // Retry once for model, JSON parsing, or response validation failures.
-      }
+    try {
+      return res.json(await runAnalysis(resumeText, jobText));
+    } catch {
+      return res.status(502).json({
+        message: "The analysis service returned an invalid response. Please try again.",
+      });
     }
-
-    return res.status(502).json({ message: "The analysis service returned an invalid response. Please try again." });
   },
 );
 
