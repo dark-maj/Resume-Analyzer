@@ -9,14 +9,33 @@ import analyzeRouter from "./routes/analyze.js";
 
 dotenv.config();
 
-const env = z
-  .object({
-    PORT: z.coerce.number().int().positive().default(3001),
-    ALLOWED_ORIGIN: z.string().url(),
-  })
-  .parse(process.env);
+const envSchema = z.object({
+  PORT: z.coerce.number().int().positive().default(3001),
+  ALLOWED_ORIGIN: z
+    .string()
+    .trim()
+    .url("must be a valid URL (e.g. http://localhost:5173)")
+    .transform((value) => new URL(value).origin),
+  GEMINI_API_KEY: z
+    .string()
+    .trim()
+    .min(1, "must be a non-empty string"),
+});
+
+const parsedEnv = envSchema.safeParse(process.env);
+if (!parsedEnv.success) {
+  const details = parsedEnv.error.issues
+    .map((issue) => `- ${issue.path.join(".") || "env"}: ${issue.message}`)
+    .join("\n");
+  console.error(`Server configuration error:\n${details}`);
+  process.exit(1);
+}
+
+const env = parsedEnv.data;
 
 const app = express();
+app.set("trust proxy", 1);
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024, files: 1 },
@@ -73,7 +92,11 @@ app.use((error, _req, res, _next) => {
   return res.status(500).json({ message: "An unexpected server error occurred." });
 });
 
-app.listen(env.PORT, () => {
-  // Keep startup logs free of request or resume content.
-  console.log(`HirePilot API listening on port ${env.PORT}`);
-});
+if (!process.env.VERCEL) {
+  app.listen(env.PORT, () => {
+    // Keep startup logs free of request, secret, or resume content.
+    console.log(`HirePilot API listening on port ${env.PORT}`);
+  });
+}
+
+export default app;

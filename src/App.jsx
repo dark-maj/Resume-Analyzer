@@ -1,8 +1,34 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { analyze, extractPdf } from "./api.js";
+
+const MAX_TEXT_LENGTH = 15000;
+
+const HOW_IT_WORKS_STEPS = [
+  {
+    step: "1",
+    title: "Add your resume",
+    description:
+      "Upload a text-based PDF for in-memory extraction or paste your resume text directly.",
+  },
+  {
+    step: "2",
+    title: "Paste the job description",
+    description:
+      "Add the target role’s requirements so HirePilot can compare skills and experience.",
+  },
+  {
+    step: "3",
+    title: "Review your match",
+    description:
+      "Get a Gemini-powered match score, exact resume evidence quotes, and prioritized skill gaps.",
+  },
+];
 
 const getErrorMessage = (error, fallback) => {
   if (error.response?.data?.message) return error.response.data.message;
+  if (error.code === "ECONNABORTED") {
+    return "The request timed out. Please try again.";
+  }
   if (error.code === "ERR_NETWORK") {
     return "Could not reach the API. Check that the backend is running and VITE_API_URL is correct.";
   }
@@ -27,6 +53,15 @@ const App = () => {
   const [resumeFile, setResumeFile] = useState(null);
   const [resumeSource, setResumeSource] = useState("text"); // "text" or "pdf"
   const [fileInputKey, setFileInputKey] = useState(0);
+  const workspaceRef = useRef(null);
+  const resumeTextareaRef = useRef(null);
+
+  const handleStartAnalysis = () => {
+    workspaceRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setTimeout(() => {
+      resumeTextareaRef.current?.focus({ preventScroll: true });
+    }, 250);
+  };
 
   // Helper: fake delay for mock responses (while backend isn’t ready)
   const fakeDelay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -66,10 +101,27 @@ const App = () => {
   };
 
   const handleAnalyzeFit = async () => {
-    if (!resumeText.trim() || !jobDescription.trim()) {
+    const trimmedResume = resumeText.trim();
+    const trimmedJob = jobDescription.trim();
+
+    if (!trimmedResume || !trimmedJob) {
       setAnalysis(null);
       setAnalysisStatus("error");
       setAnalysisError("Add both resume text and a job description before analyzing.");
+      setActiveTab("analysis");
+      return;
+    }
+
+    if (
+      resumeText.length > MAX_TEXT_LENGTH ||
+      jobDescription.length > MAX_TEXT_LENGTH
+    ) {
+      setAnalysis(null);
+      setAnalysisStatus("error");
+      setAnalysisError(
+        `Resume and job description must each be ${MAX_TEXT_LENGTH.toLocaleString()} characters or fewer.`,
+      );
+      setActiveTab("analysis");
       return;
     }
 
@@ -194,36 +246,104 @@ Sincerely,
   return (
     <div className="app">
       <header className="app-header">
-        <div>
-          <h1>HirePilot</h1>
-          <p>Agentic Resume & Job Application Optimizer (Frontend)</p>
+        <div className="brand">
+          <span className="brand-name">HirePilot</span>
+          <span className="brand-tag">Resume-to-Job Match Analyzer</span>
         </div>
-        <button
-          className="primary-btn"
-          onClick={() => {
-            setResumeText("");
-            setJobDescription("");
-            setJobUrl("");
-            setAnalysis(null);
-            setAtsResume("");
-            setCreativeResume("");
-            setCoverLetter("");
-            setVersions([]);
-            setResumeFile(null);
-            setResumeSource("text");
-            setExtractStatus("idle");
-            setExtractError("");
-            setAnalysisStatus("idle");
-            setAnalysisError("");
-            setMockLoading(false);
-            setFileInputKey((key) => key + 1);
-          }}
-        >
-          Reset Session
-        </button>
+        <div className="header-actions">
+          <button className="primary-btn" onClick={handleStartAnalysis}>
+            Start Analysis
+          </button>
+          <button
+            className="secondary-btn"
+            onClick={() => {
+              setResumeText("");
+              setJobDescription("");
+              setJobUrl("");
+              setAnalysis(null);
+              setAtsResume("");
+              setCreativeResume("");
+              setCoverLetter("");
+              setVersions([]);
+              setResumeFile(null);
+              setResumeSource("text");
+              setExtractStatus("idle");
+              setExtractError("");
+              setAnalysisStatus("idle");
+              setAnalysisError("");
+              setMockLoading(false);
+              setFileInputKey((key) => key + 1);
+            }}
+          >
+            Reset Session
+          </button>
+        </div>
       </header>
 
-      <main className="layout">
+      <section className="landing" aria-label="Introduction">
+        <div className="hero-card">
+          <div className="hero-content">
+            <span className="eyebrow">Evidence-backed resume matching</span>
+            <h1>See how well your resume matches any job description</h1>
+            <p className="hero-subtitle">
+              Upload a PDF or paste your resume, add a job description, and get
+              a Gemini-powered match score with exact resume quotes, missing
+              skills ranked by importance, and suggested keywords.
+            </p>
+            <div className="hero-actions">
+              <button className="primary-btn hero-cta" onClick={handleStartAnalysis}>
+                Start Resume Analysis
+              </button>
+              <a className="secondary-btn hero-link" href="#how-it-works">
+                How it works
+              </a>
+            </div>
+          </div>
+
+          <div className="availability-card">
+            <div className="availability-group">
+              <h3>
+                <span className="status-dot status-dot-live" />
+                Available now
+              </h3>
+              <ul>
+                <li>Text-based PDF upload &amp; in-memory extraction</li>
+                <li>Pasted resume &amp; job description matching</li>
+                <li>Match score, resume evidence quotes &amp; skill gaps</li>
+              </ul>
+            </div>
+            <div className="availability-group">
+              <h3>
+                <span className="status-dot status-dot-soon" />
+                Coming soon (mock previews)
+              </h3>
+              <ul>
+                <li>ATS &amp; Creative resume generation</li>
+                <li>Tailored cover letter drafting</li>
+                <li>Job URL fetching &amp; version history</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div id="how-it-works" className="how-it-works">
+          <div className="section-heading">
+            <h2>How it works</h2>
+            <p className="hint">Three quick steps from resume to actionable skill-gap feedback.</p>
+          </div>
+          <div className="steps-grid">
+            {HOW_IT_WORKS_STEPS.map(({ step, title, description }) => (
+              <article key={step} className="step-card">
+                <span className="step-badge">{step}</span>
+                <h3>{title}</h3>
+                <p>{description}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <main id="analyzer-workspace" ref={workspaceRef} className="layout">
         {/* Left column – Resume */}
         <section className="card">
           <h2>Your Resume</h2>
@@ -285,6 +405,7 @@ Sincerely,
 
           {/* Resume text area */}
           <textarea
+            ref={resumeTextareaRef}
             className="textarea"
             placeholder="Paste your resume here, or extract it from a PDF above..."
             value={resumeText}
@@ -296,9 +417,18 @@ Sincerely,
               setAnalysisError("");
             }}
           />
-          {resumeSource === "pdf" && extractStatus === "done" && (
-            <p className="hint">Extracted resume text is editable. Changes will be used for analysis.</p>
-          )}
+          <div className="field-meta">
+            <span className="hint">
+              {resumeSource === "pdf" && extractStatus === "done"
+                ? "Extracted resume text is editable. Changes will be used for analysis."
+                : "Supports pasted text or extracted PDF text."}
+            </span>
+            <span
+              className={`char-count ${resumeText.length > MAX_TEXT_LENGTH ? "char-count-over" : ""}`}
+            >
+              {resumeText.length.toLocaleString()} / {MAX_TEXT_LENGTH.toLocaleString()}
+            </span>
+          </div>
         </section>
 
         {/* Middle column – Job Info */}
@@ -323,6 +453,14 @@ Sincerely,
               setAnalysisError("");
             }}
           />
+          <div className="field-meta">
+            <span className="hint">Required for match analysis.</span>
+            <span
+              className={`char-count ${jobDescription.length > MAX_TEXT_LENGTH ? "char-count-over" : ""}`}
+            >
+              {jobDescription.length.toLocaleString()} / {MAX_TEXT_LENGTH.toLocaleString()}
+            </span>
+          </div>
 
           <div className="btn-row">
             <button
@@ -412,6 +550,9 @@ Sincerely,
                 )}
                 {analysisStatus === "done" && analysis && (
                   <>
+                    <p className="status-message status-success" role="status">
+                      Analysis complete.
+                    </p>
                     <p className="score">
                       Match Score: <span>{analysis.score}%</span>
                     </p>
