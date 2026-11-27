@@ -5,7 +5,7 @@ const baseURL = rawApiUrl.replace(/\/+$/, "");
 
 const api = axios.create({
   baseURL,
-  timeout: 30000,
+  timeout: 90000,
 });
 
 function ensureApiConfigured() {
